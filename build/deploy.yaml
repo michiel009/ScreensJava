@@ -1,0 +1,16 @@
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+
+steps:
+- id: 'docker build arm'
+  name: 'europe-west1-docker.pkg.dev/buevink-prd/containers/mvn-arm-builder:latest'
+  args: ['build/arm/dockerfile']
+- id: 'docker build amd64'
+  name: 'europe-west1-docker.pkg.dev/buevink-prd/containers/mvn-builder:latest'
+  args: ['build/amd64/dockerfile']
+
+#- id: 'deploy job'
+#  name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+#  entrypoint: 'bash'
+#  args: ['build/deploy.sh']

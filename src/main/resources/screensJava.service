@@ -1,0 +1,13 @@
+[Unit]
+Description=Sun screens service java
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/screensJava
+ExecStart=java -jar Screens-jar-with-dependencies.jar
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

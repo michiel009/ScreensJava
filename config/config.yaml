@@ -1,0 +1,24 @@
+mqttServer: "192.168.2.221"
+mqttPort: 1883
+mqttUsername: "homeassistant"
+mqttPassword: "${password}"
+
+dryRun: true
+
+screens:
+  - number: 0
+    name: "Woonkamer zij"
+    upSpeed: 260
+    downSpeed: 260
+  - number: 1
+    name: "Woonkamer voor"
+    upSpeed: 260
+    downSpeed: 260
+  - number: 2
+    name: "Keuken voor"
+    upSpeed: 260
+    downSpeed: 260
+  - number: 3
+    name: "Keuken zij"
+    upSpeed: 260
+    downSpeed: 260

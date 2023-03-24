@@ -1,0 +1,15 @@
+FROM maven:3.9.5-eclipse-temurin-11 as build
+WORKDIR /workspace/app
+
+COPY pom.xml .
+COPY src src
+
+RUN mvn package
+RUN mkdir -p target/runnable && (cd target/runnable; cp ../Screens-jar-with-dependencies.jar .)
+
+FROM eclipse-temurin:11-jdk-jammy
+VOLUME /tmp
+ARG DEPENDENCY=/workspace/app/target/runnable
+COPY --from=build ${DEPENDENCY} /app
+WORKDIR /app
+ENTRYPOINT java -jar /app/Screens-jar-with-dependencies.jar
