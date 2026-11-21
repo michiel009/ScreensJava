@@ -20,14 +20,15 @@ public class BrokerUptimeListener implements IMqttMessageListener {
 
     @Override
     public void messageArrived(String topic, MqttMessage msg) {
-        log.debug("Received broker uptime: {}", new String(msg.getPayload()));
-        executor.submit(() -> {
+        executor.execute(() -> {
             try {
                 long uptimeSeconds = ManagementFactory.getRuntimeMXBean().getUptime() / 1000;
                 mqttController.sendUptime(Long.toString(uptimeSeconds));
-                health.updateMqttConnectionTime();
+                health.updateLastMqttHeartbeat();
             } catch (MqttException e) {
                 log.error("Failed sending uptime", e);
+            } catch (RuntimeException e) {
+                log.error("Unexpected error sending uptime", e);
             }
         });
     }

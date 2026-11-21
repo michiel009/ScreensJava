@@ -8,6 +8,7 @@ RUN mvn package
 RUN mkdir -p target/runnable && (cd target/runnable; cp ../Screens-jar-with-dependencies.jar .)
 
 FROM eclipse-temurin:25-jdk-jammy
+RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf /var/lib/apt/lists/*
 VOLUME /tmp
 ARG DEPENDENCY=/workspace/app/target/runnable
 COPY --from=build ${DEPENDENCY} /app

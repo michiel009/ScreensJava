@@ -12,14 +12,15 @@ import java.time.Instant;
 
 @Slf4j
 public class HealthServer {
-    private static final Duration MAX_MQTT_AGE = Duration.ofMinutes(1);
+    private static final String HEALTH_PATH = "/health";
+    private static final Duration MAX_HEARTBEAT_AGE = Duration.ofMinutes(1);
     private final Health health;
     private final HttpServer server;
 
     public HealthServer(int port, Health health) throws IOException {
         this.health = health;
         server = HttpServer.create(new InetSocketAddress(port), 0);
-        server.createContext("/health", this::handleHealth);
+        server.createContext(HEALTH_PATH, this::handleHealth);
     }
 
     public void start() {
@@ -28,15 +29,35 @@ public class HealthServer {
     }
 
     private void handleHealth(HttpExchange exchange) throws IOException {
-        Instant mqttConnectionTime = health.getMqttConnectionTime();
-        boolean healthy = mqttConnectionTime != null
-                && mqttConnectionTime.isAfter(Instant.now().minus(MAX_MQTT_AGE));
+        try (exchange) {
+            if (!HEALTH_PATH.equals(exchange.getRequestURI().getPath())) {
+                exchange.sendResponseHeaders(404, -1);
+                return;
+            }
 
-        byte[] body = (healthy ? "UP" : "DOWN").getBytes();
-        exchange.getResponseHeaders().set("Content-Type", "text/plain");
-        exchange.sendResponseHeaders(healthy ? 200 : 503, body.length);
-        try (OutputStream out = exchange.getResponseBody()) {
-            out.write(body);
+            String method = exchange.getRequestMethod();
+            if (!method.equals("GET") && !method.equals("HEAD")) {
+                exchange.getResponseHeaders().set("Allow", "GET, HEAD");
+                exchange.sendResponseHeaders(405, -1);
+                return;
+            }
+
+            Instant lastMqttHeartbeat = health.getLastMqttHeartbeat();
+            boolean healthy = lastMqttHeartbeat != null
+                    && lastMqttHeartbeat.isAfter(Instant.now().minus(MAX_HEARTBEAT_AGE));
+            int status = healthy ? 200 : 503;
+
+            exchange.getResponseHeaders().set("Content-Type", "text/plain");
+            if (method.equals("HEAD")) {
+                exchange.sendResponseHeaders(status, -1);
+                return;
+            }
+
+            byte[] body = (healthy ? "UP" : "DOWN").getBytes();
+            exchange.sendResponseHeaders(status, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
         }
     }
 }

@@ -12,7 +12,6 @@
     <description>Screens controller application</description>
 
     <properties>
-        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <diozero.version>1.4.1</diozero.version>
         <java.version>25</java.version>

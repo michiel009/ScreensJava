@@ -4,7 +4,11 @@ import lombok.extern.slf4j.Slf4j;
 import nl.buevink.screens.control.Screen;
 import org.eclipse.paho.client.mqttv3.*;
 
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Slf4j
 public class MqttController {
@@ -17,10 +21,13 @@ public class MqttController {
     private static final String BROKER_UPTIME_TOPIC = "$SYS/broker/uptime";
     private static final String UPTIME_TOPIC = "screens/status/uptime";
     private final IMqttClient client;
+    private final Map<String, IMqttMessageListener> subscriptions = new ConcurrentHashMap<>();
+    private final ExecutorService resubscribeExecutor = Executors.newSingleThreadExecutor();
 
     public MqttController(String server, int port, String username, String password) throws MqttException {
         String clientId = UUID.randomUUID().toString();
         client = new MqttClient(String.format("tcp://%s:%s", server, port), clientId);
+        client.setCallback(new ReconnectCallback());
         MqttConnectOptions options = new MqttConnectOptions();
         options.setAutomaticReconnect(true);
         options.setCleanSession(true);
@@ -31,15 +38,33 @@ public class MqttController {
     }
 
     public void subscribeChangeHeight(ChangeHeightCommandListener commandListerner) throws MqttException {
-        client.subscribe(COMMAND_TOPIC, commandListerner);
+        subscribe(COMMAND_TOPIC, commandListerner);
     }
 
     public void subscribeChangeRemote(ChangeRemoteCommandListener commandListerner) throws MqttException {
-        client.subscribe(REMOTE_POSITION_TOPIC, commandListerner);
+        subscribe(REMOTE_POSITION_TOPIC, commandListerner);
     }
 
     public void subscribeBrokerUptime(BrokerUptimeListener uptimeListener) throws MqttException {
-        client.subscribe(BROKER_UPTIME_TOPIC, uptimeListener);
+        subscribe(BROKER_UPTIME_TOPIC, uptimeListener);
+    }
+
+    private void subscribe(String topic, IMqttMessageListener listener) throws MqttException {
+        subscriptions.put(topic, listener);
+        client.subscribe(topic, listener);
+    }
+
+    // With a clean session the broker forgets subscriptions on reconnect, so they are restored here.
+    // This runs on a separate thread because blocking client calls must not be made from a Paho callback.
+    private void resubscribe() {
+        subscriptions.forEach((topic, listener) -> {
+            try {
+                client.subscribe(topic, listener);
+                log.info("Resubscribed to {}", topic);
+            } catch (MqttException e) {
+                log.error("Failed resubscribing to {}", topic, e);
+            }
+        });
     }
 
     public void sendUptime(String uptime) throws MqttException {
@@ -64,5 +89,26 @@ public class MqttController {
         client.publish(REMOTE_STATE_TOPIC, mqttMessage);
     }
 
+    private class ReconnectCallback implements MqttCallbackExtended {
+        @Override
+        public void connectComplete(boolean reconnect, String serverURI) {
+            if (reconnect) {
+                log.info("Reconnected to {}", serverURI);
+                resubscribeExecutor.execute(MqttController.this::resubscribe);
+            }
+        }
 
+        @Override
+        public void connectionLost(Throwable cause) {
+            log.warn("MQTT connection lost", cause);
+        }
+
+        @Override
+        public void messageArrived(String topic, MqttMessage message) {
+        }
+
+        @Override
+        public void deliveryComplete(IMqttDeliveryToken token) {
+        }
+    }
 }

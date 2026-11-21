@@ -3,13 +3,13 @@ package nl.buevink.screens;
 import java.time.Instant;
 
 public class Health {
-    private volatile Instant mqttConnectionTime;
+    private volatile Instant lastMqttHeartbeat;
 
-    public Instant getMqttConnectionTime() {
-        return mqttConnectionTime;
+    public Instant getLastMqttHeartbeat() {
+        return lastMqttHeartbeat;
     }
 
-    public void updateMqttConnectionTime() {
-        mqttConnectionTime = Instant.now();
+    public void updateLastMqttHeartbeat() {
+        lastMqttHeartbeat = Instant.now();
     }
 }

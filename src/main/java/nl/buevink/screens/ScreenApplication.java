@@ -35,6 +35,8 @@ public class ScreenApplication {
         Config config = getConfig();
         store = new Store();
         health = new Health();
+        healthServer = new HealthServer(config.getHealthPort(), health);
+        healthServer.start();
         remote = config.isDryRun() ? new RemoteMock() : new IORemote(store.restoreRemotePosition());
         mqttController = new MqttController(config.getMqttServer(), config.getMqttPort(), config.getMqttUsername(), config.getMqttPassword());
 
@@ -52,8 +54,6 @@ public class ScreenApplication {
         brokerUptimeListener = new BrokerUptimeListener(mqttController, health);
         mqttController.subscribeBrokerUptime(brokerUptimeListener);
 
-        healthServer = new HealthServer(config.getHealthPort(), health);
-        healthServer.start();
         log.info("Application started");
     }
 

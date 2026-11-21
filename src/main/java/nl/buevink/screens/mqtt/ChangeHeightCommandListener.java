@@ -26,7 +26,7 @@ public class ChangeHeightCommandListener implements IMqttMessageListener {
         int height = 100 - Integer.parseInt(payload);
 
         log.info("Received command: {}", payload);
-        executor.submit(() -> {
+        executor.execute(() -> {
             try {
                 remoteController.changeHeight(number, height);
             } catch (InterruptedException e) {
