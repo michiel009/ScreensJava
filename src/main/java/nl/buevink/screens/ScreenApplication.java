@@ -2,6 +2,7 @@ package nl.buevink.screens;
 
 import lombok.extern.slf4j.Slf4j;
 import nl.buevink.screens.control.*;
+import nl.buevink.screens.mqtt.BrokerUptimeListener;
 import nl.buevink.screens.mqtt.ChangeHeightCommandListener;
 import nl.buevink.screens.mqtt.ChangeRemoteCommandListener;
 import nl.buevink.screens.mqtt.MqttController;
@@ -21,14 +22,17 @@ public class ScreenApplication {
     private static RemoteController remoteController;
     private static ChangeHeightCommandListener changeHeightCommandListener;
     private static ChangeRemoteCommandListener changeRemoteCommandListener;
+    private static BrokerUptimeListener brokerUptimeListener;
     private static MqttController mqttController;
     private static Store store;
     private static Remote remote;
+    private static Health health;
 
     public static void main(String[] args) throws InterruptedException, MqttException, FileNotFoundException {
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "INFO");
         Config config = getConfig();
         store = new Store();
+        health = new Health();
         remote = config.isDryRun() ? new RemoteMock() : new IORemote(store.restoreRemotePosition());
         mqttController = new MqttController(config.getMqttServer(), config.getMqttPort(), config.getMqttUsername(), config.getMqttPassword());
 
@@ -42,6 +46,9 @@ public class ScreenApplication {
         changeRemoteCommandListener = new ChangeRemoteCommandListener(remoteController);
         mqttController.subscribeChangeHeight(changeHeightCommandListener);
         mqttController.subscribeChangeRemote(changeRemoteCommandListener);
+
+        brokerUptimeListener = new BrokerUptimeListener(mqttController, health);
+        mqttController.subscribeBrokerUptime(brokerUptimeListener);
         log.info("Application started");
     }
 

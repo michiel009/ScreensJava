@@ -14,6 +14,8 @@ public class MqttController {
     private static final String POSITION_TOPIC = "screens/status/%s/position";
     private static final String REMOTE_POSITION_TOPIC = "screens/status/remote/position";
     private static final String REMOTE_STATE_TOPIC = "screens/status/remote/state";
+    private static final String BROKER_UPTIME_TOPIC = "$SYS/broker/uptime";
+    private static final String UPTIME_TOPIC = "screens/status/uptime";
     private final IMqttClient client;
 
     public MqttController(String server, int port, String username, String password) throws MqttException {
@@ -34,6 +36,14 @@ public class MqttController {
 
     public void subscribeChangeRemote(ChangeRemoteCommandListener commandListerner) throws MqttException {
         client.subscribe(REMOTE_POSITION_TOPIC, commandListerner);
+    }
+
+    public void subscribeBrokerUptime(BrokerUptimeListener uptimeListener) throws MqttException {
+        client.subscribe(BROKER_UPTIME_TOPIC, uptimeListener);
+    }
+
+    public void sendUptime(String uptime) throws MqttException {
+        client.publish(UPTIME_TOPIC, new MqttMessage(uptime.getBytes()));
     }
 
     public void sendStatus(Screen screen, ScreenStatus status) throws MqttException {
