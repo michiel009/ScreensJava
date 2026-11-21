@@ -13,6 +13,7 @@ import org.yaml.snakeyaml.constructor.Constructor;
 
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 
@@ -27,8 +28,9 @@ public class ScreenApplication {
     private static Store store;
     private static Remote remote;
     private static Health health;
+    private static HealthServer healthServer;
 
-    public static void main(String[] args) throws InterruptedException, MqttException, FileNotFoundException {
+    public static void main(String[] args) throws InterruptedException, MqttException, IOException {
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "INFO");
         Config config = getConfig();
         store = new Store();
@@ -49,6 +51,9 @@ public class ScreenApplication {
 
         brokerUptimeListener = new BrokerUptimeListener(mqttController, health);
         mqttController.subscribeBrokerUptime(brokerUptimeListener);
+
+        healthServer = new HealthServer(config.getHealthPort(), health);
+        healthServer.start();
         log.info("Application started");
     }
 

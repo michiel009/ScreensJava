@@ -12,4 +12,5 @@ VOLUME /tmp
 ARG DEPENDENCY=/workspace/app/target/runnable
 COPY --from=build ${DEPENDENCY} /app
 WORKDIR /app
+EXPOSE 8080
 ENTRYPOINT java -jar /app/Screens-jar-with-dependencies.jar
