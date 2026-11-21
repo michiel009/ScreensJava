@@ -13,4 +13,5 @@ public class Config {
     private int mqttPort;
     private String mqttUsername;
     private String mqttPassword;
+    private int healthPort = 8080;
 }

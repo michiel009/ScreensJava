@@ -23,7 +23,7 @@ public class ChangeRemoteCommandListener implements IMqttMessageListener  {
         int position = Integer.parseInt(new String(msg.getPayload()));
 
         log.info("Received remote position: {}", position);
-        executor.submit(() -> {
+        executor.execute(() -> {
             try {
                 remoteController.setRemotePosition(position);
             } catch (InterruptedException e) {
