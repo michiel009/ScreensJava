@@ -7,6 +7,10 @@ import nl.buevink.screens.mqtt.ScreenStatus;
 import org.eclipse.paho.client.mqttv3.MqttException;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class RemoteController {
@@ -14,6 +18,7 @@ public class RemoteController {
     private final List<Screen> screens;
     private final MqttController mqttController;
     private final Store store;
+    private final Map<Integer, CountDownLatch> movements = new ConcurrentHashMap<>();
 
     public RemoteController(Remote remote, List<Screen> screens, MqttController mqttController, Store store) {
         this.remote = remote;
@@ -34,6 +39,24 @@ public class RemoteController {
             return;
         }
 
+        interruptMovement(screen);
+        screen.getSemaphore().acquire();
+        try {
+            moveScreen(screen, newHeight);
+        } finally {
+            screen.getSemaphore().release();
+        }
+    }
+
+    private void interruptMovement(Screen screen) {
+        CountDownLatch movement = movements.get(screen.getNumber());
+        if (movement != null) {
+            log.info("Interrupting current movement of screen {}", screen.getName());
+            movement.countDown();
+        }
+    }
+
+    private void moveScreen(Screen screen, int newHeight) throws InterruptedException, MqttException {
         if (screen.getCurrentHeight() == newHeight) {
             log.info("New height matches current height for screen {} and height {}, no action",
                     screen.getName(), newHeight);
@@ -44,40 +67,50 @@ public class RemoteController {
 
         log.info("Changing height of screen {} from {} to {}",
                 screen.getName(), screen.getCurrentHeight(), newHeight);
-        screen.getSemaphore().acquire();
-        remote.getSemaphore().acquire();
-        changeRemotePosition(screen);
-        ScreenStatus endstate = ScreenStatus.STOPPED;
+        CountDownLatch interruption = new CountDownLatch(1);
+        movements.put(screen.getNumber(), interruption);
+        try {
+            remote.getSemaphore().acquire();
+            changeRemotePosition(screen);
 
-        if (screen.getCurrentHeight() < newHeight) {
-            mqttController.sendStatus(screen, ScreenStatus.CLOSING);
-            remote.pushDown();
-            if (newHeight == 100) {
-                remote.getSemaphore().release();
-                waitGoingDown(screen, newHeight);
-                endstate = ScreenStatus.CLOSED;
+            boolean goingDown = screen.getCurrentHeight() < newHeight;
+            boolean fullMove = newHeight == (goingDown ? 100 : 0);
+            if (goingDown) {
+                mqttController.sendStatus(screen, ScreenStatus.CLOSING);
+                remote.pushDown();
             } else {
-                waitGoingDown(screen, newHeight);
+                mqttController.sendStatus(screen, ScreenStatus.OPENING);
+                remote.pushUp();
+            }
+            long start = System.currentTimeMillis();
+            if (fullMove)
+                remote.getSemaphore().release();
+
+            boolean interrupted = waitForMovement(screen, newHeight, goingDown, interruption);
+
+            int reachedHeight = newHeight;
+            ScreenStatus endstate = ScreenStatus.STOPPED;
+            if (fullMove && !interrupted) {
+                endstate = goingDown ? ScreenStatus.CLOSED : ScreenStatus.OPEN;
+            } else {
+                if (fullMove) {
+                    log.info("Reacquiring remote to stop screen {}", screen.getName());
+                    remote.getSemaphore().acquire();
+                    changeRemotePosition(screen);
+                }
+                long elapsed = System.currentTimeMillis() - start;
                 remote.pushStop();
                 remote.getSemaphore().release();
+                if (interrupted)
+                    reachedHeight = heightAfter(screen, goingDown, elapsed);
             }
-        } else {
-            mqttController.sendStatus(screen, ScreenStatus.OPENING);
-            remote.pushUp();
-            if (newHeight == 0) {
-                remote.getSemaphore().release();
-                waitGoingUp(screen, newHeight);
-                endstate = ScreenStatus.OPEN;
-            } else {
-                waitGoingUp(screen, newHeight);
-                remote.pushStop();
-                remote.getSemaphore().release();
-            }
+
+            screen.setCurrentHeight(reachedHeight);
+            mqttController.sendPosition(screen, reachedHeight);
+            mqttController.sendStatus(screen, endstate);
+        } finally {
+            movements.remove(screen.getNumber(), interruption);
         }
-        screen.setCurrentHeight(newHeight);
-        mqttController.sendPosition(screen, newHeight);
-        mqttController.sendStatus(screen, endstate);
-        screen.getSemaphore().release();
     }
 
     private void changeRemotePosition(Screen screen) throws MqttException, InterruptedException {
@@ -91,24 +124,31 @@ public class RemoteController {
         store.storeRemotePosition(remote.getPosition());
     }
 
-    private void waitGoingDown(Screen screen, int newHeight) throws InterruptedException {
-        long waitingTime = (long) (newHeight - screen.getCurrentHeight()) * screen.getDownSpeed();
-        if (newHeight == 100)
+    /**
+     * Waits until the screen reached the new height.
+     *
+     * @return true when the movement got interrupted by a new command for the same screen
+     */
+    private boolean waitForMovement(Screen screen, int newHeight, boolean goingDown, CountDownLatch interruption)
+            throws InterruptedException {
+        long waitingTime = goingDown
+                ? (long) (newHeight - screen.getCurrentHeight()) * screen.getDownSpeed()
+                : (long) (screen.getCurrentHeight() - newHeight) * screen.getUpSpeed();
+        if (newHeight == 100 || newHeight == 0)
             waitingTime += 100;
         log.info("Going to wait for {}ms to change screen {} to new height: {}",
                 waitingTime, screen.getName(), newHeight);
 
-        Thread.sleep(waitingTime);
+        boolean interrupted = interruption.await(waitingTime, TimeUnit.MILLISECONDS);
+        if (interrupted)
+            log.info("Movement of screen {} to height {} interrupted", screen.getName(), newHeight);
+        return interrupted;
     }
 
-    private void waitGoingUp(Screen screen, int newHeight) throws InterruptedException {
-        long waitingTime = (long) (screen.getCurrentHeight() - newHeight) * screen.getUpSpeed();
-        if (newHeight == 0)
-            waitingTime += 100;
-        log.info("Going to wait for {}ms to change screen {} to new height: {}",
-                waitingTime, screen.getName(), newHeight);
-
-        Thread.sleep(waitingTime);
+    private int heightAfter(Screen screen, boolean goingDown, long elapsed) {
+        int moved = (int) (elapsed / (goingDown ? screen.getDownSpeed() : screen.getUpSpeed()));
+        int height = goingDown ? screen.getCurrentHeight() + moved : screen.getCurrentHeight() - moved;
+        return Math.max(0, Math.min(100, height));
     }
 
     public void setRemotePosition(int position) throws InterruptedException, MqttException {
